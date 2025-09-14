@@ -80,7 +80,27 @@ namespace NzbDrone.Core.DecisionEngine
 
                     if (parsedMovieInfo != null && !parsedMovieInfo.PrimaryMovieTitle.IsNullOrWhiteSpace())
                     {
-                        var remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
+                        RemoteMovie remoteMovie = null;
+
+                        if (!string.IsNullOrWhiteSpace(searchCriteria?.Movie.CustomName))
+                        {
+                            var movieToPass = searchCriteria?.Movie;
+                            remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, movieToPass, searchCriteria);
+
+                            // Comprobar que todos los tokens que componen CustomName existen en report.Title, los tokens se cortan con espacios -:_
+                            var customNameTokens = searchCriteria?.Movie.CustomName.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
+                            var titleTokens = report.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
+
+                            if (!customNameTokens.All(token => titleTokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
+                            {
+                                remoteMovie.Movie = null; // Forzar que Movie sea null para que se rechace por UnknownMovie en vez de MovieNotMonitored
+                            }
+                        }
+                        else
+                        {
+                            remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
+                        }
+
                         remoteMovie.Release = report;
 
                         if (remoteMovie.Movie == null)

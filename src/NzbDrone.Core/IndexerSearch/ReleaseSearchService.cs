@@ -75,6 +75,28 @@ namespace NzbDrone.Core.IndexerSearch
                 InteractiveSearch = interactiveSearch
             };
 
+            if (!string.IsNullOrWhiteSpace(movie.CustomName))
+            {
+                spec.SceneTitles = new List<string> { movie.CustomName };
+                spec.ForceExactTitle = true;
+
+                // Asegurar que los generadores que leen desde MovieMetadata usen el CustomName.
+                if (spec.Movie?.MovieMetadata?.Value != null)
+                {
+                    spec.Movie.MovieMetadata.Value.Title = movie.CustomName;
+                    spec.Movie.MovieMetadata.Value.OriginalTitle = movie.CustomName;
+
+                    spec.Movie.MovieMetadata.Value.TmdbId = 0;
+                    spec.Movie.MovieMetadata.Value.ImdbId = null;
+                }
+
+                return spec;
+            }
+            else
+            {
+                spec.ForceExactTitle = false;
+            }
+
             var wantedLanguages = _qualityProfileService.GetAcceptableLanguages(movie.QualityProfileId);
             var translations = _movieTranslationService.GetAllTranslationsForMovieMetadata(movie.MovieMetadataId);
 

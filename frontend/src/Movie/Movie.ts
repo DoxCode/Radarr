@@ -97,6 +97,7 @@ interface Movie extends ModelBase {
   isAvailable: boolean;
   isSaving?: boolean;
   addOptions: MovieAddOptions;
+  customName?: string;
 }
 
 export default Movie;

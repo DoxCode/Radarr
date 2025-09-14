@@ -57,6 +57,8 @@ namespace NzbDrone.Core.Parser
             // That did not work? Maybe some tool uses [] for years. Who would do that?
             new Regex(@"^(?<title>(?![(\[]).+?)?(?:(?:[-_\W](?<![)!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
+            new Regex(@"^(?<title>(?![(\[]).+?)\s*(?:\[[^\]]+\]\s*)+(?:\b[A-Za-z]{2,20}\b\s*)*(?<year>(1(8|9)|20)\d{2})?(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
             // As a last resort for movies that have ( or [ in their title.
             new Regex(@"^(?<title>.+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\]|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled)
         };

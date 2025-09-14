@@ -37,6 +37,9 @@ namespace NzbDrone.Core.Movies
 
         public bool HasFile => MovieFileId > 0;
 
+        // Campo personalizado para nombre manual
+        public string CustomName { get; set; }
+
         // compatibility properties
         public string Title
         {
@@ -158,6 +161,7 @@ namespace NzbDrone.Core.Movies
             RootFolderPath = otherMovie.RootFolderPath;
             Tags = otherMovie.Tags;
             AddOptions = otherMovie.AddOptions;
+            CustomName = otherMovie.CustomName;
         }
     }
 }

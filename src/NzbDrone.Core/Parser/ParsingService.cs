@@ -14,6 +14,7 @@ namespace NzbDrone.Core.Parser
     {
         Movie GetMovie(string title);
         RemoteMovie Map(ParsedMovieInfo parsedMovieInfo, string imdbId, int tmdbId, SearchCriteriaBase searchCriteria = null);
+        RemoteMovie Map(ParsedMovieInfo parsedMovieInfo, string imdbId, int tmdbId, Movie movie, SearchCriteriaBase searchCriteria);
         RemoteMovie Map(ParsedMovieInfo parsedMovieInfo, int movieId);
         ParsedMovieInfo ParseMinimalPathMovieInfo(string path);
     }

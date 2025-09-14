@@ -163,7 +163,10 @@ namespace NzbDrone.Core.Indexers.Newznab
 
                     if (!Settings.RemoveYear)
                     {
-                        searchQuery += $" {searchCriteria.Movie.Year}";
+                        if (!searchCriteria.ForceExactTitle)
+                        {
+                            searchQuery += $" {searchCriteria.Movie.Year}";
+                        }
                     }
 
                     chain.Add(GetPagedRequests(MaxPages,

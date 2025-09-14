@@ -86,6 +86,9 @@ namespace Radarr.Api.V3.Movies
         public DateTime? LastSearchTime { get; set; }
         public MovieStatisticsResource Statistics { get; set; }
 
+        // Nuevo campo expuesto en la API (camelCase en JSON: customName)
+        public string CustomName { get; set; }
+
         // Hiding this so people don't think its usable (only used to set the initial state)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         [SwaggerIgnore]
@@ -165,6 +168,7 @@ namespace Radarr.Api.V3.Movies
                 Collection = collection,
                 Popularity = model.MovieMetadata.Value.Popularity,
                 LastSearchTime = model.LastSearchTime,
+                CustomName = model.CustomName,
             };
         }
 
@@ -209,7 +213,7 @@ namespace Radarr.Api.V3.Movies
                 MinimumAvailability = resource.MinimumAvailability,
 
                 RootFolderPath = resource.RootFolderPath,
-
+                CustomName = resource.CustomName,
                 Tags = resource.Tags ?? new HashSet<int>(),
                 Added = resource.Added,
                 AddOptions = resource.AddOptions

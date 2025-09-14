@@ -100,6 +100,7 @@ import MovieStatusLabel from './MovieStatusLabel';
 import MovieTags from './MovieTags';
 import MovieTitlesTable from './Titles/MovieTitlesTable';
 import styles from './MovieDetails.css';
+import { saveMovie } from 'Store/Actions/movieActions';
 
 const defaultFontSize = parseInt(fonts.defaultFontSize);
 const lineHeight = parseFloat(fonts.lineHeight);
@@ -264,6 +265,28 @@ function MovieDetails({ movieId }: MovieDetailsProps) {
   const [overviewRef, { height: overviewHeight }] = useMeasure();
   const wasRefreshing = usePrevious(isRefreshing);
   const wasRenaming = usePrevious(isRenaming);
+  const [customNameValue, setCustomNameValue] = React.useState<string | null>(null);
+
+
+   useEffect(() => {
+    if (movie) {
+      setCustomNameValue(movie.customName ?? '');
+    }
+  }, [movie]);
+
+  const handleSaveCustomName = useCallback(async () => {
+    if (!movie) return;
+
+    const updated = { ...movie, customName: customNameValue };
+
+    // Usar la acción redux existente para que la petición pase por el cliente/API
+    // del frontend (adjunta la autenticación y maneja errores globales).
+    try {
+      dispatch(saveMovie(updated));
+    } catch (e) {
+      console.error('Error saving custom name', e);
+    }
+  }, [movie, customNameValue, dispatch]);
 
   const handleOrganizePress = useCallback(() => {
     setIsOrganizeModalOpen(true);
@@ -908,8 +931,20 @@ function MovieDetails({ movieId }: MovieDetailsProps) {
 
           <FieldSet legend={translate('Files')}>
             <MovieFileEditorTable movieId={id} />
-
             <ExtraFileTable movieId={id} />
+            <div style={{ marginTop: 8 }}>
+              <div>
+                <label>Custom Name </label>
+                <input
+                  type="text"
+                  value={customNameValue ?? ''}
+                  onChange={(e) => setCustomNameValue(e.target.value)}
+                  placeholder={translate('CustomName')}
+                  style={{ marginRight: 8 }}
+                />
+                <button onClick={handleSaveCustomName}>{translate('Save')}</button>
+              </div>
+            </div>
           </FieldSet>
 
           <FieldSet legend={translate('Cast')}>
