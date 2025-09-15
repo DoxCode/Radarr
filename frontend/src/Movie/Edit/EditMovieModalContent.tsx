@@ -45,6 +45,7 @@ function EditMovieModalContent({
   onDeleteMoviePress,
 }: EditMovieModalContentProps) {
   const dispatch = useDispatch();
+  const movie = useMovie(movieId)!;
   const {
     title,
     monitored,
@@ -53,7 +54,8 @@ function EditMovieModalContent({
     path,
     tags,
     rootFolderPath: initialRootFolderPath,
-  } = useMovie(movieId)!;
+    externalMagnet,
+  } = movie;
 
   const { isSaving, saveError, pendingChanges } = useSelector(
     (state: AppState) => state.movies
@@ -77,6 +79,7 @@ function EditMovieModalContent({
         qualityProfileId,
         path,
         tags,
+        externalMagnet,
       },
       pendingChanges,
       saveError
@@ -87,6 +90,7 @@ function EditMovieModalContent({
     qualityProfileId,
     path,
     tags,
+    externalMagnet,
     pendingChanges,
     saveError,
   ]);
@@ -233,6 +237,20 @@ function EditMovieModalContent({
               type={inputTypes.TAG}
               name="tags"
               {...settings.tags}
+              onChange={handleInputChange}
+            />
+          </FormGroup>
+
+          <FormGroup size={sizes.MEDIUM}>
+            <FormLabel>{translate('ExternalMagnet')}</FormLabel>
+
+            <FormInputGroup
+              type={inputTypes.TEXT}
+              name="externalMagnet"
+              value={settings.externalMagnet.value ?? ''}
+              errors={settings.externalMagnet.errors}
+              warnings={settings.externalMagnet.warnings}
+              pending={settings.externalMagnet.pending}
               onChange={handleInputChange}
             />
           </FormGroup>

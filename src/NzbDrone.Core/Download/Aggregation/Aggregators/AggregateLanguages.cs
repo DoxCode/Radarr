@@ -29,6 +29,21 @@ namespace NzbDrone.Core.Download.Aggregation.Aggregators
             var languages = parsedMovieInfo.Languages;
             var movie = remoteMovie.Movie;
             var releaseTokens = parsedMovieInfo.SimpleReleaseTitle ?? parsedMovieInfo.ReleaseTitle;
+
+            if (parsedMovieInfo == null)
+            {
+                _logger.Trace("AggregateLanguages: parsedMovieInfo is null for remoteMovie {0}", remoteMovie);
+                remoteMovie.Languages = releaseInfo != null && releaseInfo.Languages.Any() ? releaseInfo.Languages : new List<Language> { Language.Unknown };
+                return remoteMovie;
+            }
+
+            if (string.IsNullOrWhiteSpace(releaseTokens))
+            {
+                _logger.Trace("AggregateLanguages: release tokens empty for remoteMovie {0}", remoteMovie);
+                remoteMovie.Languages = releaseInfo != null && releaseInfo.Languages.Any() ? releaseInfo.Languages : new List<Language> { Language.Unknown };
+                return remoteMovie;
+            }
+
             var normalizedReleaseTokens = Parser.Parser.NormalizeMovieTitle(releaseTokens);
             var languagesToRemove = new List<Language>();
 

@@ -98,6 +98,7 @@ interface Movie extends ModelBase {
   isSaving?: boolean;
   addOptions: MovieAddOptions;
   customName?: string;
+  externalMagnet?: string;
 }
 
 export default Movie;

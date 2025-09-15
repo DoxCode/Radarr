@@ -20,6 +20,9 @@ namespace NzbDrone.Core.IndexerSearch.Definitions
         public virtual bool InteractiveSearch { get; set; }
         public bool ForceExactTitle { get; set; }
 
+        public bool ForceExternalMagnet { get; set; }
+        public string ExternalMagnet { get; set; }
+
         public List<string> CleanSceneTitles => SceneTitles.Select(GetCleanSceneTitle).Distinct().ToList();
 
         public static string GetCleanSceneTitle(string title)

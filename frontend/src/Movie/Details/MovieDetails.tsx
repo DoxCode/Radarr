@@ -939,7 +939,7 @@ function MovieDetails({ movieId }: MovieDetailsProps) {
                   type="text"
                   value={customNameValue ?? ''}
                   onChange={(e) => setCustomNameValue(e.target.value)}
-                  placeholder={translate('CustomName')}
+                  placeholder='Custom Name'
                   style={{ marginRight: 8 }}
                 />
                 <button onClick={handleSaveCustomName}>{translate('Save')}</button>

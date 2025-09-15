@@ -44,6 +44,21 @@ namespace NzbDrone.Core.Qualities
 
         public int Compare(QualityModel left, QualityModel right, bool respectGroupOrder)
         {
+            if (left == null && right == null)
+            {
+                return 0;
+            }
+
+            if (left == null)
+            {
+                return -1;
+            }
+
+            if (right == null)
+            {
+                return 1;
+            }
+
             var result = Compare(left.Quality, right.Quality, respectGroupOrder);
 
             if (result == 0)

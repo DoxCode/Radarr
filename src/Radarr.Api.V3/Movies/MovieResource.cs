@@ -88,6 +88,7 @@ namespace Radarr.Api.V3.Movies
 
         // Nuevo campo expuesto en la API (camelCase en JSON: customName)
         public string CustomName { get; set; }
+        public string ExternalMagnet { get; set; }
 
         // Hiding this so people don't think its usable (only used to set the initial state)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -169,6 +170,7 @@ namespace Radarr.Api.V3.Movies
                 Popularity = model.MovieMetadata.Value.Popularity,
                 LastSearchTime = model.LastSearchTime,
                 CustomName = model.CustomName,
+                ExternalMagnet = model.ExternalMagnet,
             };
         }
 
@@ -214,6 +216,7 @@ namespace Radarr.Api.V3.Movies
 
                 RootFolderPath = resource.RootFolderPath,
                 CustomName = resource.CustomName,
+                ExternalMagnet = resource.ExternalMagnet,
                 Tags = resource.Tags ?? new HashSet<int>(),
                 Added = resource.Added,
                 AddOptions = resource.AddOptions

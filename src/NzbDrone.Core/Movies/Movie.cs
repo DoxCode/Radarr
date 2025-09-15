@@ -40,6 +40,9 @@ namespace NzbDrone.Core.Movies
         // Campo personalizado para nombre manual
         public string CustomName { get; set; }
 
+        // Magnet externo a usar como prioridad si está definido
+        public string ExternalMagnet { get; set; }
+
         // compatibility properties
         public string Title
         {
@@ -162,6 +165,7 @@ namespace NzbDrone.Core.Movies
             Tags = otherMovie.Tags;
             AddOptions = otherMovie.AddOptions;
             CustomName = otherMovie.CustomName;
+            ExternalMagnet = otherMovie.ExternalMagnet;
         }
     }
 }

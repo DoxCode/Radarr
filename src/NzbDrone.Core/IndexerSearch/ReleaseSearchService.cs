@@ -8,10 +8,12 @@ using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
+using NzbDrone.Core.Languages;
 using NzbDrone.Core.Movies;
 using NzbDrone.Core.Movies.Translations;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Profiles.Qualities;
+using NzbDrone.Core.Qualities;
 
 namespace NzbDrone.Core.IndexerSearch
 {
@@ -56,8 +58,53 @@ namespace NzbDrone.Core.IndexerSearch
         public async Task<List<DownloadDecision>> MovieSearch(Movie movie, bool userInvokedSearch, bool interactiveSearch)
         {
             var downloadDecisions = new List<DownloadDecision>();
-
             var searchSpec = Get<MovieSearchCriteria>(movie, userInvokedSearch, interactiveSearch);
+
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet))
+            {
+                _logger.Info("ExternalMagnet present for movie {0}, creating direct download decision and skipping indexers.", movie.Id);
+
+                var torrentInfo = new TorrentInfo
+                {
+                    // Magnet must be provided to DownloadService clients
+                    DownloadUrl = movie.ExternalMagnet,
+                    MagnetUrl  = movie.ExternalMagnet,
+                    Title      = movie.Title ?? movie.MovieMetadata.Value.Title,
+                    DownloadProtocol = DownloadProtocol.Torrent
+                };
+
+                var remoteMovie = new RemoteMovie
+                {
+                    Release = torrentInfo,
+                    Movie   = movie,
+                    ParsedMovieInfo = new ParsedMovieInfo
+                   {
+                       // Minimal defaults so downstream consumers don't NRE / violate DB constraints
+                       ReleaseTitle = torrentInfo.Title,
+                       Quality = new QualityModel(Quality.Remux1080p),
+                       Languages = new List<Language>()
+                   },
+                    MovieMatchType = MovieMatchType.Title
+                };
+
+                // Ensure the release is allowed / visible to downstream processors
+                remoteMovie.DownloadAllowed = true;
+
+                // Ensure Release.Title exists and source is marked
+                remoteMovie.Release.Title = torrentInfo.Title;
+                remoteMovie.Release.Indexer = string.Empty;
+                remoteMovie.Release.DownloadProtocol = DownloadProtocol.Torrent;
+
+                // Mark source (so history / pending know where it came from)
+                remoteMovie.ReleaseSource = searchSpec.InteractiveSearch ? ReleaseSourceType.InteractiveSearch
+                                            : searchSpec.UserInvokedSearch ? ReleaseSourceType.UserInvokedSearch
+                                            : ReleaseSourceType.Search;
+
+                // Return a DownloadDecision approved (no rejections) so ProcessDownloadDecisions will attempt grab
+                var decision = new DownloadDecision(remoteMovie);
+
+                return new List<DownloadDecision> { decision };
+            }
 
             var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), searchSpec);
             downloadDecisions.AddRange(decisions);
@@ -95,6 +142,14 @@ namespace NzbDrone.Core.IndexerSearch
             else
             {
                 spec.ForceExactTitle = false;
+            }
+
+            _logger.Info("Get generate");
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet))
+            {
+                _logger.Info("IS EXTERNAL MAGNET");
+                spec.ExternalMagnet = movie.ExternalMagnet;
+                spec.ForceExternalMagnet = true;
             }
 
             var wantedLanguages = _qualityProfileService.GetAcceptableLanguages(movie.QualityProfileId);
