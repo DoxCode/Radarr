@@ -2,17 +2,16 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copiar el código
+ARG TARGET_FRAMEWORK=net8.0
+
 COPY . .
 
-# Restaurar y publicar (ajusta la ruta del csproj si difiere)
 RUN dotnet restore src/Radarr.sln
-RUN dotnet publish src/NzbDrone.Console/Radarr.Console.csproj -c Release -o /app/publish
+RUN dotnet publish src/NzbDrone.Console/Radarr.Console.csproj -c Release -f ${TARGET_FRAMEWORK} -o /app/publish
 
 # 2) Runtime stage (ASP.NET 8 runtime)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 
-# Args usados en labels/package_info
 ARG VERSION=local
 ARG BUILD_DATE=unknown
 ARG RADARR_BRANCH=master
