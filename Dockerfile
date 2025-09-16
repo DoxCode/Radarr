@@ -1,44 +1,55 @@
-# 1) Build stage: compila y publica el proyecto
+# Etapa 1: Imagen de compilación
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
+ARG TARGET_RID=linux-x64
+ENV \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    NODE_VERSION=20.9.0
 
-ARG TARGET_FRAMEWORK=net8.0
+# Instala Node.js y Yarn
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils && \
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    npm install -g yarn && \
+    rm -rf /var/lib/apt/lists/*
 
+WORKDIR /source
+
+# --- Compilación del Frontend ---
+# Copia solo los archivos necesarios para restaurar dependencias de yarn y aprovecha la caché
 COPY . .
+RUN yarn install --frozen-lockfile
+
+# Copia el resto del código del frontend y lo compila
+
+RUN yarn build
+
+# --- Compilación del Backend ---
+# Copia solo los archivos de proyecto para restaurar dependencias de .NET y aprovecha la caché
 
 RUN dotnet restore src/Radarr.sln
-RUN dotnet publish src/NzbDrone.Console/Radarr.Console.csproj -c Release -f ${TARGET_FRAMEWORK} -o /app/publish
 
-# 2) Runtime stage (ASP.NET 8 runtime)
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# Copia el resto del código y publica la aplicación para una arquitectura específica
+COPY . .
 
-ARG VERSION=local
-ARG BUILD_DATE=unknown
-ARG RADARR_BRANCH=master
+# linux-x64 -t:PublishAllRids win-x64 linux-arm64
+RUN dotnet publish src/Radarr.sln -c Release -r linux-x64 --no-restore --framework net8.0 -o /app/publish
 
-# metadata
-LABEL org.opencontainers.image.version="${VERSION}"
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
-LABEL maintainer="Roxedus,thespad"
 
-ENV XDG_CONFIG_HOME="/config/xdg" \
-    COMPlus_EnableDiagnostics=0 \
-    TMPDIR=/run/radarr-temp
+# Etapa 2: Imagen final de runtime (mucho más pequeña)
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
-# herramientas opcionales
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    xmlstarlet \
-    ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+# Instala dependencias de runtime necesarias
+RUN apt-get update && apt-get install -y libsqlite3-0 && rm -rf /var/lib/apt/lists/*
 
-# copiar el publish del stage build
-COPY --from=build /app/publish /app/radarr/bin
+WORKDIR /app
 
-# info de paquete
-RUN printf "UpdateMethod=docker\nBranch=%s\nPackageVersion=%s\nPackageAuthor=[local-build]\n" "${RADARR_BRANCH}" "${VERSION}" > /app/radarr/package_info
+# Copia solo los archivos publicados desde la etapa de compilación
+COPY --from=build /app/publish .
 
+# Copia los artefactos de compilación del frontend a la carpeta UI
+COPY --from=build /source/_output/UI ./UI
+
+# Expone el puerto
 EXPOSE 7878
-VOLUME /config
-WORKDIR /app/radarr/bin
 
-ENTRYPOINT ["dotnet", "Radarr.dll"]
+# El ejecutable principal estará en la raíz del directorio de trabajo
+ENTRYPOINT ["./Radarr"]
