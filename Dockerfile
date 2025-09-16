@@ -9,7 +9,11 @@ ENV \
 
 # Instala Node.js y Yarn
 RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils && \
-    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${TARGETARCH}.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    # Añade lógica para corregir el nombre de la arquitectura para Node.js
+    NODE_ARCH=$TARGETARCH && \
+    if [ "$TARGETARCH" = "amd64" ]; then NODE_ARCH="x64"; fi && \
+    # Descarga usando el nombre de arquitectura corregido
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
     npm install -g yarn && \
     rm -rf /var/lib/apt/lists/*
 
@@ -54,4 +58,4 @@ COPY --from=build /source/_output/UI ./UI
 EXPOSE 7878
 
 # El ejecutable principal estará en la raíz del directorio de trabajo
-ENTRYPOINT ["./Radarr"]
+CMD ["./Radarr", "-data=/config"]
