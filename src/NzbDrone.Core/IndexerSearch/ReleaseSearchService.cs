@@ -60,9 +60,10 @@ namespace NzbDrone.Core.IndexerSearch
             var downloadDecisions = new List<DownloadDecision>();
             var searchSpec = Get<MovieSearchCriteria>(movie, userInvokedSearch, interactiveSearch);
 
-            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet))
+            // Solo usar ExternalMagnet para búsquedas automáticas, no para búsquedas interactivas
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet) && !interactiveSearch)
             {
-                _logger.Info("ExternalMagnet present for movie {0}, creating direct download decision and skipping indexers.", movie.Id);
+                _logger.Info("ExternalMagnet present for movie {0}, creating direct download decision and skipping indexers (automatic search).", movie.Id);
 
                 var torrentInfo = new TorrentInfo
                 {
@@ -106,6 +107,12 @@ namespace NzbDrone.Core.IndexerSearch
                 return new List<DownloadDecision> { decision };
             }
 
+            // Log cuando se omite ExternalMagnet para búsquedas interactivas
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet) && interactiveSearch)
+            {
+                _logger.Debug("ExternalMagnet present for movie {0} but skipping for interactive search to allow manual selection.", movie.Id);
+            }
+
             var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), searchSpec);
             downloadDecisions.AddRange(decisions);
 
@@ -145,7 +152,9 @@ namespace NzbDrone.Core.IndexerSearch
             }
 
             _logger.Info("Get generate");
-            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet))
+
+            // Solo forzar ExternalMagnet para búsquedas automáticas, no para búsquedas interactivas
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet) && !interactiveSearch)
             {
                 _logger.Info("IS EXTERNAL MAGNET");
                 spec.ExternalMagnet = movie.ExternalMagnet;
