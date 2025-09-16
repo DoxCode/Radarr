@@ -1,13 +1,15 @@
 # Etapa 1: Imagen de compilación
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-ARG TARGET_RID=linux-x64
+
+ARG TARGETARCH
+
 ENV \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     NODE_VERSION=20.9.0
 
 # Instala Node.js y Yarn
 RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils && \
-    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${TARGETARCH}.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
     npm install -g yarn && \
     rm -rf /var/lib/apt/lists/*
 
@@ -31,7 +33,7 @@ RUN dotnet restore src/Radarr.sln
 COPY . .
 
 # linux-x64 -t:PublishAllRids win-x64 linux-arm64
-RUN dotnet publish src/Radarr.sln -c Release -r linux-x64 --no-restore --framework net8.0 -o /app/publish
+RUN dotnet publish src/Radarr.sln -c Release -r linux-${TARGETARCH} --no-restore --framework net8.0 -o /app/publish
 
 
 # Etapa 2: Imagen final de runtime (mucho más pequeña)
