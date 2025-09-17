@@ -3,109 +3,118 @@ using System.Linq;
 using MonoTorrent;
 using NLog;
 using NzbDrone.Common.Http;
-using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Movies;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.Download
 {
-    public class SaveSuccessfulMagnetHandler : IHandle<DownloadCompletedEvent>
+    public class CaptureDownloadInfoHandler : IHandle<DownloadStartedEvent>
     {
         private readonly IMovieService _movieService;
         private readonly IHttpClient _httpClient;
         private readonly Logger _logger;
 
-        public SaveSuccessfulMagnetHandler(IMovieService movieService, IHttpClient httpClient, Logger logger)
+        public CaptureDownloadInfoHandler(IMovieService movieService, IHttpClient httpClient, Logger logger)
         {
             _movieService = movieService;
             _httpClient = httpClient;
             _logger = logger;
+            _logger.Info("CaptureDownloadInfoHandler: Handler registrado e inicializado correctamente");
         }
 
-        public void Handle(DownloadCompletedEvent message)
+        public void Handle(DownloadStartedEvent message)
         {
-            var trackedDownload = message.TrackedDownload;
+            _logger.Info("CaptureDownloadInfoHandler: Capturando información de descarga iniciada");
 
-            // Solo procesar torrents completados exitosamente
-            if (trackedDownload?.RemoteMovie?.Release == null ||
-                trackedDownload.Protocol != Indexers.DownloadProtocol.Torrent)
+            var remoteMovie = message.RemoteMovie;
+
+            if (remoteMovie?.Movie == null || remoteMovie.Release == null)
             {
+                _logger.Debug("CaptureDownloadInfoHandler: RemoteMovie o Release no disponible");
                 return;
             }
 
-            var torrentInfo = trackedDownload.RemoteMovie.Release as TorrentInfo;
-            if (torrentInfo == null)
-            {
-                return;
-            }
+            var movie = remoteMovie.Movie;
+            var release = remoteMovie.Release;
 
-            var movie = trackedDownload.RemoteMovie.Movie;
-            if (movie == null)
+            _logger.Info("CaptureDownloadInfoHandler: Procesando descarga para película '{0}' (ID: {1})", movie.Title, movie.Id);
+
+            // Solo procesar torrents
+            if (release.DownloadProtocol != Indexers.DownloadProtocol.Torrent)
             {
-                _logger.Warn("No se encontró la película para guardar el magnet exitoso");
+                _logger.Debug("CaptureDownloadInfoHandler: No es un torrent, omitiendo");
                 return;
             }
 
             try
             {
-                var magnetUrl = GetOrGenerateMagnetUrl(torrentInfo, trackedDownload);
+                var magnetUrl = GetOrGenerateMagnetUrl(release, movie.Title);
 
                 if (!string.IsNullOrWhiteSpace(magnetUrl))
                 {
-                    // Guardar el magnet URL exitoso en el campo ExternalMagnet
+                    // Guardar el magnet URL en ExternalMagnet
                     movie.ExternalMagnet = magnetUrl;
                     _movieService.UpdateMovie(movie);
 
-                    _logger.Debug("Magnet URL guardado exitosamente para la película '{0}': {1}",
-                        movie.Title,
-                        magnetUrl);
+                    _logger.Info("CaptureDownloadInfoHandler: Magnet URL capturado y guardado para película '{0}'",
+                        movie.Title);
                 }
                 else
                 {
-                    _logger.Debug("No se pudo obtener o generar un magnet URL para la película '{0}'", movie.Title);
+                    _logger.Info("CaptureDownloadInfoHandler: No se pudo obtener magnet URL para película '{0}'", movie.Title);
                 }
             }
             catch (System.Exception ex)
             {
-                _logger.Error(ex, "Error al guardar el magnet URL para la película '{0}'", movie.Title);
+                _logger.Error(ex, "CaptureDownloadInfoHandler: Error al capturar información de descarga para película '{0}'", movie.Title);
             }
         }
 
-        private string GetOrGenerateMagnetUrl(TorrentInfo torrentInfo, TrackedDownload trackedDownload)
+        private string GetOrGenerateMagnetUrl(ReleaseInfo release, string movieTitle)
         {
+            _logger.Info("CaptureDownloadInfoHandler: Intentando obtener/generar magnet URL");
+
+            var torrentInfo = release as TorrentInfo;
+
             // 1. Si ya tenemos un magnet URL válido, usarlo
-            if (!string.IsNullOrWhiteSpace(torrentInfo.MagnetUrl) &&
+            if (!string.IsNullOrWhiteSpace(torrentInfo?.MagnetUrl) &&
                 torrentInfo.MagnetUrl.StartsWith("magnet:", System.StringComparison.OrdinalIgnoreCase))
             {
+                _logger.Info("CaptureDownloadInfoHandler: Usando magnet URL existente");
                 return torrentInfo.MagnetUrl;
             }
 
             // 2. Si tenemos un archivo torrent (no magnet), extraer información completa incluyendo trackers
-            if (!string.IsNullOrWhiteSpace(torrentInfo.DownloadUrl) &&
-                !torrentInfo.DownloadUrl.StartsWith("magnet:", System.StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(release.DownloadUrl) &&
+                !release.DownloadUrl.StartsWith("magnet:", System.StringComparison.OrdinalIgnoreCase))
             {
-                var enhancedMagnet = ExtractMagnetFromTorrentFile(torrentInfo.DownloadUrl, torrentInfo.Title);
+                _logger.Info("CaptureDownloadInfoHandler: Intentando extraer magnet desde archivo torrent");
+                var enhancedMagnet = ExtractMagnetFromTorrentFile(release.DownloadUrl, movieTitle);
                 if (!string.IsNullOrWhiteSpace(enhancedMagnet))
                 {
+                    _logger.Info("CaptureDownloadInfoHandler: Magnet extraído exitosamente desde archivo torrent");
                     return enhancedMagnet;
                 }
             }
 
             // 3. Si tenemos InfoHash, generar magnet URL básico
-            if (!string.IsNullOrWhiteSpace(torrentInfo.InfoHash))
+            if (!string.IsNullOrWhiteSpace(torrentInfo?.InfoHash))
             {
-                return GenerateMagnetFromInfoHash(torrentInfo.InfoHash, torrentInfo.Title);
+                _logger.Info("CaptureDownloadInfoHandler: Generando magnet básico desde InfoHash");
+                return GenerateMagnetFromInfoHash(torrentInfo.InfoHash, movieTitle);
             }
 
-            // 4. Si tenemos DownloadId que parece ser un hash, intentar usarlo
-            var downloadId = trackedDownload.DownloadItem?.DownloadId;
-            if (!string.IsNullOrWhiteSpace(downloadId) && IsValidHash(downloadId))
+            // 4. Si tenemos DownloadUrl como magnet, usarlo
+            if (!string.IsNullOrWhiteSpace(release.DownloadUrl) &&
+                release.DownloadUrl.StartsWith("magnet:", System.StringComparison.OrdinalIgnoreCase))
             {
-                return GenerateMagnetFromInfoHash(downloadId, torrentInfo.Title);
+                _logger.Info("CaptureDownloadInfoHandler: Usando DownloadUrl como magnet");
+                return release.DownloadUrl;
             }
 
             // 5. No se puede generar magnet URL
+            _logger.Info("CaptureDownloadInfoHandler: No fue posible generar magnet URL - información insuficiente");
             return null;
         }
 
@@ -146,14 +155,14 @@ namespace NzbDrone.Core.Download
         {
             try
             {
-                _logger.Debug("Intentando extraer magnet completo desde archivo torrent: {0}", torrentUrl);
+                _logger.Debug("CaptureDownloadInfoHandler: Intentando extraer magnet completo desde archivo torrent: {0}", torrentUrl);
 
                 var request = new HttpRequest(torrentUrl);
                 var response = _httpClient.Get(request);
 
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    _logger.Debug("No se pudo descargar el archivo torrent desde: {0}", torrentUrl);
+                    _logger.Debug("CaptureDownloadInfoHandler: No se pudo descargar el archivo torrent desde: {0}", torrentUrl);
                     return null;
                 }
 
@@ -169,7 +178,7 @@ namespace NzbDrone.Core.Download
 
                 var magnetUrl = GenerateMagnetFromInfoHash(infoHash, displayName, trackers);
 
-                _logger.Debug("Magnet extraído exitosamente con {0} trackers: {1}",
+                _logger.Debug("CaptureDownloadInfoHandler: Magnet extraído exitosamente con {0} trackers: {1}",
                     trackers.Count,
                     magnetUrl);
 
@@ -177,7 +186,7 @@ namespace NzbDrone.Core.Download
             }
             catch (System.Exception ex)
             {
-                _logger.Debug(ex, "Error al extraer magnet desde archivo torrent: {0}", torrentUrl);
+                _logger.Debug(ex, "CaptureDownloadInfoHandler: Error al extraer magnet desde archivo torrent: {0}", torrentUrl);
                 return null;
             }
         }
