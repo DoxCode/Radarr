@@ -78,6 +78,49 @@ namespace NzbDrone.Core.DecisionEngine
                 {
                     var parsedMovieInfo = Parser.Parser.ParseMovieTitle(report.Title);
 
+                    if (parsedMovieInfo != null && !parsedMovieInfo.PrimaryMovieTitle.IsNullOrWhiteSpace())
+                    {
+                        RemoteMovie remoteMovie = null;
+
+                        if (!string.IsNullOrWhiteSpace(searchCriteria?.Movie.CustomName))
+                        {
+                            var movieToPass = searchCriteria?.Movie;
+                            remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, movieToPass, searchCriteria);
+
+                            // Comprobar que todos los tokens que componen CustomName existen en report.Title, los tokens se cortan con espacios -:_
+                            var customNameTokens = searchCriteria?.Movie.CustomName.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
+                            var titleTokens = report.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
+
+                            if (!customNameTokens.All(token => titleTokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
+                            {
+                                remoteMovie.Movie = null; // Forzar que Movie sea null para que se rechace por UnknownMovie en vez de MovieNotMonitored
+                            }
+                        }
+                        else
+                        {
+                            remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
+                        }
+
+                        remoteMovie.Release = report;
+
+                        if (remoteMovie.Movie == null)
+                        {
+                            decision = new DownloadDecision(remoteMovie, new DownloadRejection(DownloadRejectionReason.UnknownMovie, pushedRelease ? "Unknown Movie. Unable to match to existing movie in Library using release title." : "Unknown Movie. Unable to match to correct movie using release title."));
+                        }
+                        else
+                        {
+                            _aggregationService.Augment(remoteMovie);
+
+                            remoteMovie.CustomFormats = _formatCalculator.ParseCustomFormat(remoteMovie, remoteMovie.Release.Size);
+                            remoteMovie.CustomFormatScore = remoteMovie?.Movie?.QualityProfile?.CalculateCustomFormatScore(remoteMovie.CustomFormats) ?? 0;
+
+                            _logger.Trace("Custom Format Score of '{0}' [{1}] calculated for '{2}'", remoteMovie.CustomFormatScore, remoteMovie.CustomFormats?.ConcatToString(), report.Title);
+
+                            remoteMovie.DownloadAllowed = remoteMovie.Movie != null;
+                            decision = GetDecisionForReport(remoteMovie, searchCriteria);
+                        }
+                    }
+
                     if (searchCriteria != null)
                     {
                         if (parsedMovieInfo == null)
@@ -89,58 +132,16 @@ namespace NzbDrone.Core.DecisionEngine
                             };
                         }
 
-                        if (parsedMovieInfo != null)
+                        if (parsedMovieInfo.PrimaryMovieTitle.IsNullOrWhiteSpace())
                         {
-                            RemoteMovie remoteMovie = null;
-
-                            if (!string.IsNullOrWhiteSpace(searchCriteria?.Movie.CustomName))
+                            var remoteMovie = new RemoteMovie
                             {
-                                var movieToPass = searchCriteria?.Movie;
-                                remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, movieToPass, searchCriteria);
+                                Release = report,
+                                ParsedMovieInfo = parsedMovieInfo,
+                                Languages = parsedMovieInfo.Languages
+                            };
 
-                                // Comprobar que todos los tokens que componen CustomName existen en report.Title, los tokens se cortan con espacios -:_
-                                var customNameTokens = searchCriteria?.Movie.CustomName.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-                                var titleTokens = report.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-
-                                if (!customNameTokens.All(token => titleTokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
-                                {
-                                    remoteMovie.Movie = null; // Forzar que Movie sea null para que se rechace por UnknownMovie en vez de MovieNotMonitored
-                                }
-                            }
-                            else
-                            {
-                                remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
-
-                                if (parsedMovieInfo.PrimaryMovieTitle.IsNullOrWhiteSpace())
-                                {
-                                    var nameMovie = remoteMovie.Movie.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-                                    var titleTokens = report.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-
-                                    if (!nameMovie.All(token => titleTokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
-                                    {
-                                        remoteMovie.Movie = null; // Forzar que Movie sea null para que se rechace por UnknownMovie en vez de MovieNotMonitored
-                                    }
-                                }
-                            }
-
-                            remoteMovie.Release = report;
-
-                            if (remoteMovie.Movie == null)
-                            {
-                                decision = new DownloadDecision(remoteMovie, new DownloadRejection(DownloadRejectionReason.UnknownMovie, pushedRelease ? "Unknown Movie. Unable to match to existing movie in Library using release title." : "Unknown Movie. Unable to match to correct movie using release title."));
-                            }
-                            else
-                            {
-                                _aggregationService.Augment(remoteMovie);
-
-                                remoteMovie.CustomFormats = _formatCalculator.ParseCustomFormat(remoteMovie, remoteMovie.Release.Size);
-                                remoteMovie.CustomFormatScore = remoteMovie?.Movie?.QualityProfile?.CalculateCustomFormatScore(remoteMovie.CustomFormats) ?? 0;
-
-                                _logger.Trace("Custom Format Score of '{0}' [{1}] calculated for '{2}'", remoteMovie.CustomFormatScore, remoteMovie.CustomFormats?.ConcatToString(), report.Title);
-
-                                remoteMovie.DownloadAllowed = remoteMovie.Movie != null;
-                                decision = GetDecisionForReport(remoteMovie, searchCriteria);
-                            }
+                            decision = new DownloadDecision(remoteMovie, new DownloadRejection(DownloadRejectionReason.UnableToParse, "Unable to parse release"));
                         }
                     }
                 }
