@@ -94,6 +94,12 @@ namespace NzbDrone.Core.Download
             string downloadClientId;
             try
             {
+                // Disparar evento antes de iniciar la descarga (cuando aún tenemos toda la información)
+                _logger.Info("DownloadService: Disparando DownloadStartedEvent para película '{0}' con cliente '{1}'",
+                    remoteMovie.Movie.Title,
+                    downloadClient.Definition.Name);
+                _eventAggregator.PublishEvent(new DownloadStartedEvent(remoteMovie, downloadClient.Definition.Name));
+
                 downloadClientId = await downloadClient.Download(remoteMovie, indexer);
                 _downloadClientStatusService.RecordSuccess(downloadClient.Definition.Id);
                 _indexerStatusService.RecordSuccess(remoteMovie.Release.IndexerId);
