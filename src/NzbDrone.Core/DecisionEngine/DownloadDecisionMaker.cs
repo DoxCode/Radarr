@@ -100,17 +100,14 @@ namespace NzbDrone.Core.DecisionEngine
                         {
                             remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
 
-                            if (remoteMovie.Movie == null)
+                          /*  if (remoteMovie.Movie == null)
                             {
-                                var customNameTokens = searchCriteria?.Movie.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-                                var titleTokens = report.Title.Split(new[] { ' ', '-', ':', '_', '.', '(', ')' }, StringSplitOptions.RemoveEmptyEntries);
-
-                                if (customNameTokens.All(token => titleTokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
+                                if (report.Title.Contains(searchCriteria?.Movie.Title))
                                 {
-                                    _logger.Debug("No movie found matching parsed info: {0}", parsedMovieInfo.ToJson());
-                                    remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria?.Movie, searchCriteria);
+                                    parsedMovieInfo.MovieTitles = new List<string> { searchCriteria?.Movie.Title };
+                                    remoteMovie = _parsingService.Map(parsedMovieInfo, report.ImdbId.ToString(), report.TmdbId, searchCriteria);
                                 }
-                            }
+                            }*/
                         }
 
                         remoteMovie.Release = report;
@@ -191,11 +188,11 @@ namespace NzbDrone.Core.DecisionEngine
 
                     if (decision.Rejections.Any())
                     {
-                        _logger.Info("Release '{0}' from '{1}' rejected for the following reasons: {2}", report.Title, report.Indexer, string.Join(", ", decision.Rejections));
+                        _logger.Debug("Release '{0}' from '{1}' rejected for the following reasons: {2}", report.Title, report.Indexer, string.Join(", ", decision.Rejections));
                     }
                     else
                     {
-                        _logger.Info("Release '{0}' from '{1}' accepted", report.Title, report.Indexer);
+                        _logger.Debug("Release '{0}' from '{1}' accepted", report.Title, report.Indexer);
                     }
 
                     yield return decision;

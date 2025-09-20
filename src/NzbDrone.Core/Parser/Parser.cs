@@ -28,6 +28,8 @@ namespace NzbDrone.Core.Parser
             // Anime [Subgroup] and Year
             new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)(?<title>(?![(\[]).+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|x|\d+|\]|\W\d+)))+.*?(?<hash>\[\w{8}\])?(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
+            new Regex(@"^(?:\[(?<subgroup>[^\]]+)\][-_. ]*)(?<title>(?![(\[]).+?)(?:\s*\[(?<quality>\d{3,4}p|720p|1080p|2160p|4K|UHD)\])?(?:\s*\[(?<audio>[Mm]ulti-[Aa]udio|[Dd]ual[- ]?[Aa]udio|[Ee]nglish|[Jj]apanese|[Ss]panish)\])?(?:\s*\[(?<subs>[Mm]ulti-[Ss]ubs?|[Hh]ard[Ss]ub|[Ss]oft[Ss]ub|[Ee]nglish|[Ss]panish|[Nn]o[- ]?[Ss]ubs?)\])?(?:\s*\[(?<codec>[Hh]\.?26[45]|[Xx]26[45]|[Aa][Vv][Cc]|[Hh][Ee][Vv][Cc]|[Dd][Ii][Vv][Xx])\])?(?:\s*\[(?<misc>[^\]]+)\])*(?:\s*(?<year>(19|20)\d{2}))?(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
             // Anime [Subgroup] no year, versioned title, hash
             new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)(?<title>(?![(\[]).+?)((v)(?:\d{1,2})(?:([-_. ])))(\[.*)?(?:[\[(][^])])?.*?(?<hash>\[\w{8}\])(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
@@ -61,7 +63,8 @@ namespace NzbDrone.Core.Parser
 
             // As a last resort for movies that have ( or [ in their title.
             new Regex(@"^(?<title>.+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\]|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-            new Regex(@"^(?<title>.+?)(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled)
+
+            // new Regex(@"^(?<title>.+?)(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled)
         };
 
         private static readonly Regex[] ReportMovieTitleFolderRegex = new[]
