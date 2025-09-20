@@ -60,7 +60,8 @@ namespace NzbDrone.Core.Parser
             new Regex(@"^(?<title>(?![(\[]).+?)\s*(?:\[[^\]]+\]\s*)+(?:\b[A-Za-z]{2,20}\b\s*)*(?<year>(1(8|9)|20)\d{2})?(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
             // As a last resort for movies that have ( or [ in their title.
-            new Regex(@"^(?<title>.+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\]|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled)
+            new Regex(@"^(?<title>.+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\]|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            new Regex(@"^(?<title>.+?)(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled)
         };
 
         private static readonly Regex[] ReportMovieTitleFolderRegex = new[]
@@ -206,10 +207,12 @@ namespace NzbDrone.Core.Parser
         public static ParsedMovieInfo ParseMovieTitle(string title, bool isDir = false)
         {
             var originalTitle = title;
+            Logger.Debug("Parsing movie title: {0}", title);
             try
             {
                 if (!ValidateBeforeParsing(title))
                 {
+                    Logger.Debug("Title '{0}' failed validation", title);
                     return null;
                 }
 
@@ -353,7 +356,6 @@ namespace NzbDrone.Core.Parser
                 }
             }
 
-            Logger.Debug("Unable to parse {0}", title);
             return null;
         }
 
