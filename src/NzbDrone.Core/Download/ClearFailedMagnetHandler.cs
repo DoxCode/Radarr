@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
@@ -14,8 +15,8 @@ namespace NzbDrone.Core.Download
         private readonly IHistoryService _historyService;
         private readonly Logger _logger;
 
-        // Cache para evitar procesamiento repetitivo
-        private static readonly Dictionary<int, DateTime> _recentlyProcessed = new Dictionary<int, DateTime>();
+        // Cache para evitar procesamiento repetitivo (thread-safe)
+        private static readonly ConcurrentDictionary<int, DateTime> _recentlyProcessed = new ConcurrentDictionary<int, DateTime>();
         private static readonly TimeSpan _processingCooldown = TimeSpan.FromMinutes(10); // Aumentado de 5 a 10 minutos
 
         public ClearFailedMagnetHandler(IMovieService movieService, IHistoryService historyService, Logger logger)
@@ -103,7 +104,7 @@ namespace NzbDrone.Core.Download
         {
             _recentlyProcessed[movieId] = DateTime.UtcNow;
 
-            // Limpiar entradas antiguas para evitar memory leak
+            // Limpiar entradas antiguas para evitar memory leak (thread-safe)
             var cutoff = DateTime.UtcNow.AddHours(-1);
             var keysToRemove = new List<int>();
 
@@ -117,7 +118,7 @@ namespace NzbDrone.Core.Download
 
             foreach (var key in keysToRemove)
             {
-                _recentlyProcessed.Remove(key);
+                _recentlyProcessed.TryRemove(key, out _);
             }
         }
 
