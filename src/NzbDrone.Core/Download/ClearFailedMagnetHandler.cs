@@ -18,49 +18,17 @@ namespace NzbDrone.Core.Download
         public void Handle(DownloadFailedEvent message)
         {
             _logger.Info("ClearFailedMagnetHandler: Procesando fallo de descarga");
+            _logger.Info("ClearFailedMagnetHandler: Event data - Message: {0}, TrackedDownload: {1}, MovieId: {2}",
+                         message != null ? "NOT NULL" : "NULL",
+                         message?.TrackedDownload != null ? "NOT NULL" : "NULL",
+                         message?.MovieId);
 
-            var trackedDownload = message.TrackedDownload;
-
-            if (trackedDownload?.RemoteMovie != null)
+            // Intentar obtener la película directamente por MovieId del evento
+            if (message?.MovieId > 0)
             {
-                var release = trackedDownload?.RemoteMovie?.Release;
-                if (release != null)
-                {
-                    _logger.Info("ClearFailedMagnetHandler: Release disponible, release.Guid: {0}, release.Title: {1}, release.InfoUrl: {2}, release.IndexerId: {3}", release?.Guid, release?.Title, release?.InfoUrl, release?.IndexerId);
-                }
-                else
-                {
-                    _logger.Info("ClearFailedMagnetHandler: Release no disponible");
-                }
-            }
+                _logger.Info("ClearFailedMagnetHandler: Obteniendo película por MovieId: {0}", message.MovieId);
 
-            if (trackedDownload?.DownloadItem != null)
-            {
-                var downloadItem = trackedDownload.DownloadItem;
-                if (downloadItem != null)
-                {
-                    _logger.Info("ClearFailedMagnetHandler: DownloadItem disponible, downloadItem.Title: {0}, downloadItem.DownloadId: {1}, downloadItem.DownloadClientInfo.Id: {2}", downloadItem?.Title, downloadItem?.DownloadId, downloadItem?.DownloadClientInfo?.Id);
-                }
-                else
-                {
-                    _logger.Info("ClearFailedMagnetHandler: DownloadItem no disponible");
-                }
-            }
-
-            if (trackedDownload?.RemoteMovie != null)
-            {
-                var parsedMovie = trackedDownload?.RemoteMovie?.ParsedMovieInfo;
-                if (parsedMovie != null)
-                {
-                    _logger.Info("ClearFailedMagnetHandler: ParsedMovie disponible, parsedMovie.ImdbId: {0}, parsedMovie.OriginalTitle: {1}, parsedMovie.PrimaryMovieTitle: {2}, parsedMovie.ReleaseTitle: {3}", parsedMovie?.ImdbId, parsedMovie?.OriginalTitle, parsedMovie?.PrimaryMovieTitle, parsedMovie?.ReleaseTitle);
-                }
-                else
-                {
-                    _logger.Info("ClearFailedMagnetHandler: ParsedMovie no disponible");
-                }
-
-                var movie = trackedDownload.RemoteMovie.Movie;
-                _logger.Info("ClearFailedMagnetHandler: MOVIE: Movie encontrado - ID: {0}, Title: {1}", movie?.Id, movie?.Title);
+                var movie = _movieService.GetMovie(message.MovieId);
 
                 if (movie != null && !string.IsNullOrWhiteSpace(movie.ExternalMagnet))
                 {
@@ -83,10 +51,12 @@ namespace NzbDrone.Core.Download
                 }
                 else
                 {
-                    _logger.Info("ClearFailedMagnetHandler: Movie no disponible en TrackedDownload");
+                    _logger.Info("ClearFailedMagnetHandler: No se pudo obtener la película con ID: {0}", message.MovieId);
                 }
-
-                _logger.Info("__ENDED MOVIE__");
+            }
+            else
+            {
+                _logger.Info("ClearFailedMagnetHandler: MovieId no válido en el evento: {0}", message?.MovieId);
             }
 
             _logger.Info("__ENDED__");
