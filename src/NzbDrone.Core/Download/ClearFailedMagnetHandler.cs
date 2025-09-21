@@ -16,7 +16,7 @@ namespace NzbDrone.Core.Download
 
         // Cache para evitar procesamiento repetitivo
         private static readonly Dictionary<int, DateTime> _recentlyProcessed = new Dictionary<int, DateTime>();
-        private static readonly TimeSpan _processingCooldown = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan _processingCooldown = TimeSpan.FromMinutes(10); // Aumentado de 5 a 10 minutos
 
         public ClearFailedMagnetHandler(IMovieService movieService, IHistoryService historyService, Logger logger)
         {
@@ -36,12 +36,15 @@ namespace NzbDrone.Core.Download
                     return;
                 }
 
-                // Verificar cooldown para evitar procesamiento repetitivo
+                // CRÍTICO: Verificar cooldown MUY TEMPRANO para evitar procesamiento duplicado
                 if (IsInCooldown(message.MovieId))
                 {
                     _logger.Debug("ClearFailedMagnetHandler: Película {0} en cooldown, omitiendo", message.MovieId);
                     return;
                 }
+
+                // Marcar como procesado INMEDIATAMENTE para prevenir duplicados
+                MarkAsProcessed(message.MovieId);
 
                 var movie = _movieService.GetMovie(message.MovieId);
 
@@ -60,14 +63,11 @@ namespace NzbDrone.Core.Download
                     return;
                 }
 
-                // Verificar si ha habido múltiples fallos recientes
+                // Verificar si ha habido múltiples fallos recientes (EXCLUIR eventos muy recientes)
                 if (HasTooManyRecentFailures(movie.Id))
                 {
                     _logger.Info("ClearFailedMagnetHandler: Múltiples fallos recientes para película '{0}', limpiando ExternalMagnet",
                                  movie.Title);
-
-                    // Marcar como procesado ANTES de hacer cambios
-                    MarkAsProcessed(movie.Id);
 
                     // Limpiar el ExternalMagnet
                     movie.ExternalMagnet = null;
@@ -79,9 +79,8 @@ namespace NzbDrone.Core.Download
                 }
                 else
                 {
-                    _logger.Debug("ClearFailedMagnetHandler: Fallo único para película '{0}', manteniendo ExternalMagnet por ahora",
+                    _logger.Debug("ClearFailedMagnetHandler: Fallos insuficientes para película '{0}', manteniendo ExternalMagnet",
                                   movie.Title);
-                    MarkAsProcessed(movie.Id);
                 }
             }
             catch (Exception ex)
@@ -126,12 +125,19 @@ namespace NzbDrone.Core.Download
         {
             try
             {
+                var cutoffTime = DateTime.UtcNow.AddMinutes(-30);
+
+                // Obtener fallos recientes EXCLUYENDO los últimos 2 minutos para evitar falsos positivos
                 var recentFailures = _historyService.GetByMovieId(movieId, MovieHistoryEventType.DownloadFailed)
-                    .Where(h => h.Date > DateTime.UtcNow.AddMinutes(-30))
+                    .Where(h => h.Date > cutoffTime && h.Date < DateTime.UtcNow.AddMinutes(-2))
                     .ToList();
 
-                // Si hay 3 o más fallos en los últimos 30 minutos, limpiar ExternalMagnet
-                return recentFailures.Count >= 3;
+                _logger.Debug("ClearFailedMagnetHandler: Película {0} tiene {1} fallos en los últimos 30 minutos (excluyendo últimos 2 min)",
+                             movieId,
+                             recentFailures.Count);
+
+                // Requerir al menos 5 fallos para limpiar ExternalMagnet (más conservador)
+                return recentFailures.Count >= 5;
             }
             catch (Exception ex)
             {
