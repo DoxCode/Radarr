@@ -187,6 +187,12 @@ namespace NzbDrone.Core.Blocklisting
                     return;
                 }
 
+                // NUEVO: Verificar si ya existe una entrada reciente para evitar duplicados
+                if (ShouldSkipBlocklistEntry(message))
+                {
+                    return;
+                }
+
                 var publishedDateString = message.Data.GetValueOrDefault("publishedDate");
 
                 var publishedDate = string.IsNullOrWhiteSpace(publishedDateString) ||
@@ -222,6 +228,50 @@ namespace NzbDrone.Core.Blocklisting
             {
                 // Silenciar excepción para evitar bucles infinitos
                 // El blocklistService es secundario y no debe interrumpir el flujo principal
+            }
+        }
+
+        private bool ShouldSkipBlocklistEntry(DownloadFailedEvent message)
+        {
+            try
+            {
+                // Si no hay información suficiente para verificar duplicados
+                if (string.IsNullOrWhiteSpace(message.SourceTitle) || message.MovieId <= 0)
+                {
+                    return false;
+                }
+
+                // Buscar entradas recientes similares (últimos 5 minutos)
+                var recentBlocklistEntries = _blocklistRepository.BlocklistedByMovie(message.MovieId)
+                    .Where(b => b.SourceTitle == message.SourceTitle &&
+                               b.Date > DateTime.UtcNow.AddMinutes(-2))
+                    .ToList();
+
+                // Si ya hay una entrada reciente con el mismo título, omitir
+                if (recentBlocklistEntries.Any())
+                {
+                    return true;
+                }
+
+                // Verificar por hash de torrent si está disponible
+                var torrentHash = message.Data?.GetValueOrDefault("torrentInfoHash");
+                if (!string.IsNullOrWhiteSpace(torrentHash))
+                {
+                    var recentHashEntries = _blocklistRepository.BlocklistedByTorrentInfoHash(message.MovieId, torrentHash)
+                        .Where(b => b.Date > DateTime.UtcNow.AddMinutes(-2))
+                        .ToList();
+
+                    if (recentHashEntries.Any())
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception)
+            {
+                return false; // En caso de error, permitir la entrada
             }
         }
 

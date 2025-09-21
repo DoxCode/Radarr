@@ -360,7 +360,7 @@ namespace NzbDrone.Core.History
 
                 // Buscar entradas recientes de fallo para la misma película (últimos 1 minutos)
                 var recentFailures = _historyRepository.GetByMovieId(message.MovieId, MovieHistoryEventType.DownloadFailed)
-                    .Where(h => h.Date > now.AddMinutes(-1))
+                    .Where(h => h.Date > now.AddMinutes(-2))
                     .ToList();
 
                 // Si ya hay 3 o más entradas recientes para la misma película, omitir esta
