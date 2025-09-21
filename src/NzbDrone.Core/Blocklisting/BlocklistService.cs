@@ -188,7 +188,7 @@ namespace NzbDrone.Core.Blocklisting
                 }
 
                 var publishedDateString = message.Data.GetValueOrDefault("publishedDate");
-                
+
                 var publishedDate = string.IsNullOrWhiteSpace(publishedDateString) ||
                     !DateTime.TryParse(publishedDateString, out var parsedDate)
                     ? DateTime.UtcNow
