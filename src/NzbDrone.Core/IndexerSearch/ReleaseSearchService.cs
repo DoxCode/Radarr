@@ -6,6 +6,7 @@ using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.DecisionEngine;
+using NzbDrone.Core.History;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
 using NzbDrone.Core.Languages;
@@ -30,6 +31,7 @@ namespace NzbDrone.Core.IndexerSearch
         private readonly IMovieService _movieService;
         private readonly IMovieTranslationService _movieTranslationService;
         private readonly IQualityProfileService _qualityProfileService;
+        private readonly IHistoryService _historyService;
         private readonly Logger _logger;
 
         public ReleaseSearchService(IIndexerFactory indexerFactory,
@@ -37,6 +39,7 @@ namespace NzbDrone.Core.IndexerSearch
                                 IMovieService movieService,
                                 IMovieTranslationService movieTranslationService,
                                 IQualityProfileService qualityProfileService,
+                                IHistoryService historyService,
                                 Logger logger)
         {
             _indexerFactory = indexerFactory;
@@ -44,6 +47,7 @@ namespace NzbDrone.Core.IndexerSearch
             _movieService = movieService;
             _movieTranslationService = movieTranslationService;
             _qualityProfileService = qualityProfileService;
+            _historyService = historyService;
             _logger = logger;
         }
 
@@ -60,51 +64,62 @@ namespace NzbDrone.Core.IndexerSearch
             var downloadDecisions = new List<DownloadDecision>();
             var searchSpec = Get<MovieSearchCriteria>(movie, userInvokedSearch, interactiveSearch);
 
-            // Solo usar ExternalMagnet para búsquedas automáticas, no para búsquedas interactivas
-            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet) && !interactiveSearch)
+            // CRÍTICO: Circuit breaker para ExternalMagnet
+            if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet) &&
+                !interactiveSearch &&
+                !HasRecentFailures(movie.Id))
             {
-                _logger.Info("ExternalMagnet present for movie {0}, creating direct download decision and skipping indexers (automatic search).", movie.Id);
+                _logger.Info("ReleaseSearchService: ExternalMagnet present for movie {0}, creating direct download decision", movie.Id);
 
-                var torrentInfo = new TorrentInfo
+                try
                 {
-                    // Magnet must be provided to DownloadService clients
-                    DownloadUrl = movie.ExternalMagnet,
-                    MagnetUrl  = movie.ExternalMagnet,
-                    Title      = movie.Title ?? movie.MovieMetadata.Value.Title,
-                    DownloadProtocol = DownloadProtocol.Torrent
-                };
+                    var torrentInfo = new TorrentInfo
+                    {
+                        // Magnet must be provided to DownloadService clients
+                        DownloadUrl = movie.ExternalMagnet,
+                        MagnetUrl  = movie.ExternalMagnet,
+                        Title      = movie.Title ?? movie.MovieMetadata.Value.Title,
+                        DownloadProtocol = DownloadProtocol.Torrent
+                    };
 
-                var remoteMovie = new RemoteMovie
+                    var remoteMovie = new RemoteMovie
+                    {
+                        Release = torrentInfo,
+                        Movie   = movie,
+                        ParsedMovieInfo = new ParsedMovieInfo
+                       {
+                           // Minimal defaults so downstream consumers don't NRE / violate DB constraints
+                           ReleaseTitle = torrentInfo.Title,
+                           Quality = new QualityModel(Quality.Remux1080p),
+                           Languages = new List<Language>()
+                       },
+                        MovieMatchType = MovieMatchType.Title
+                    };
+
+                    // Ensure the release is allowed / visible to downstream processors
+                    remoteMovie.DownloadAllowed = true;
+
+                    // Ensure Release.Title exists and source is marked
+                    remoteMovie.Release.Title = torrentInfo.Title;
+                    remoteMovie.Release.Indexer = string.Empty;
+                    remoteMovie.Release.DownloadProtocol = DownloadProtocol.Torrent;
+
+                    // Mark source (so history / pending know where it came from)
+                    remoteMovie.ReleaseSource = searchSpec.InteractiveSearch ? ReleaseSourceType.InteractiveSearch
+                                                : searchSpec.UserInvokedSearch ? ReleaseSourceType.UserInvokedSearch
+                                                : ReleaseSourceType.Search;
+
+                    // Return a DownloadDecision approved (no rejections) so ProcessDownloadDecisions will attempt grab
+                    var decision = new DownloadDecision(remoteMovie);
+
+                    _logger.Debug("ReleaseSearchService: Created download decision for ExternalMagnet: {0}", movie.ExternalMagnet);
+
+                    return new List<DownloadDecision> { decision };
+                }
+                catch (Exception ex)
                 {
-                    Release = torrentInfo,
-                    Movie   = movie,
-                    ParsedMovieInfo = new ParsedMovieInfo
-                   {
-                       // Minimal defaults so downstream consumers don't NRE / violate DB constraints
-                       ReleaseTitle = torrentInfo.Title,
-                       Quality = new QualityModel(Quality.Remux1080p),
-                       Languages = new List<Language>()
-                   },
-                    MovieMatchType = MovieMatchType.Title
-                };
-
-                // Ensure the release is allowed / visible to downstream processors
-                remoteMovie.DownloadAllowed = true;
-
-                // Ensure Release.Title exists and source is marked
-                remoteMovie.Release.Title = torrentInfo.Title;
-                remoteMovie.Release.Indexer = string.Empty;
-                remoteMovie.Release.DownloadProtocol = DownloadProtocol.Torrent;
-
-                // Mark source (so history / pending know where it came from)
-                remoteMovie.ReleaseSource = searchSpec.InteractiveSearch ? ReleaseSourceType.InteractiveSearch
-                                            : searchSpec.UserInvokedSearch ? ReleaseSourceType.UserInvokedSearch
-                                            : ReleaseSourceType.Search;
-
-                // Return a DownloadDecision approved (no rejections) so ProcessDownloadDecisions will attempt grab
-                var decision = new DownloadDecision(remoteMovie);
-
-                return new List<DownloadDecision> { decision };
+                    _logger.Error(ex, "ReleaseSearchService: Error al procesar ExternalMagnet para película {0}", movie.Id);
+                }
             }
 
             // Log cuando se omite ExternalMagnet para búsquedas interactivas
@@ -233,6 +248,30 @@ namespace NzbDrone.Core.IndexerSearch
             return decisions.GroupBy(d => d.RemoteMovie.Release.Guid)
                 .Select(d => d.OrderBy(v => v.Rejections.Count()).ThenBy(v => v.RemoteMovie?.Release?.IndexerPriority ?? IndexerDefinition.DefaultPriority).First())
                 .ToList();
+        }
+
+        private bool HasRecentFailures(int movieId)
+        {
+            try
+            {
+                var recentFailures = _historyService.GetByMovieId(movieId, MovieHistoryEventType.DownloadFailed)
+                    .Where(h => h.Date > DateTime.UtcNow.AddMinutes(-30))
+                    .ToList();
+
+                var hasFailures = recentFailures.Any();
+
+                if (hasFailures)
+                {
+                    _logger.Debug("ReleaseSearchService: Película {0} tiene fallos recientes, omitiendo ExternalMagnet", movieId);
+                }
+
+                return hasFailures;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug(ex, "ReleaseSearchService: Error al verificar fallos recientes para MovieId: {0}", movieId);
+                return false; // En caso de error, permitir el uso de ExternalMagnet
+            }
         }
     }
 }

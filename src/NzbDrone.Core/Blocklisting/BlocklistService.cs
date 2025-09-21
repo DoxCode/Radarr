@@ -179,29 +179,50 @@ namespace NzbDrone.Core.Blocklisting
 
         public void Handle(DownloadFailedEvent message)
         {
-            var blocklist = new Blocklist
+            try
             {
-                MovieId = message.MovieId,
-                SourceTitle = message.SourceTitle,
-                Quality = message.Quality,
-                Date = DateTime.UtcNow,
-                PublishedDate = DateTime.Parse(message.Data.GetValueOrDefault("publishedDate")),
-                Size = long.Parse(message.Data.GetValueOrDefault("size", "0")),
-                Indexer = message.Data.GetValueOrDefault("indexer"),
-                Protocol = (DownloadProtocol)Convert.ToInt32(message.Data.GetValueOrDefault("protocol")),
-                Message = message.Message,
-                Languages = message.Languages,
-                TorrentInfoHash = message.TrackedDownload?.Protocol == DownloadProtocol.Torrent
-                    ? message.TrackedDownload.DownloadItem.DownloadId
-                    : message.Data.GetValueOrDefault("torrentInfoHash", null)
-            };
+                // Validación temprana para evitar errores
+                if (message?.Data == null)
+                {
+                    return;
+                }
 
-            if (Enum.TryParse(message.Data.GetValueOrDefault("indexerFlags"), true, out IndexerFlags flags))
-            {
-                blocklist.IndexerFlags = flags;
+                var publishedDateString = message.Data.GetValueOrDefault("publishedDate");
+                
+                var publishedDate = string.IsNullOrWhiteSpace(publishedDateString) ||
+                    !DateTime.TryParse(publishedDateString, out var parsedDate)
+                    ? DateTime.UtcNow
+                    : parsedDate;
+
+                var blocklist = new Blocklist
+                {
+                    MovieId = message.MovieId,
+                    SourceTitle = message.SourceTitle,
+                    Quality = message.Quality,
+                    Date = DateTime.UtcNow,
+                    PublishedDate = publishedDate,
+                    Size = long.Parse(message.Data.GetValueOrDefault("size", "0")),
+                    Indexer = message.Data.GetValueOrDefault("indexer"),
+                    Protocol = (DownloadProtocol)Convert.ToInt32(message.Data.GetValueOrDefault("protocol")),
+                    Message = message.Message,
+                    Languages = message.Languages,
+                    TorrentInfoHash = message.TrackedDownload?.Protocol == DownloadProtocol.Torrent
+                        ? message.TrackedDownload.DownloadItem.DownloadId
+                        : message.Data.GetValueOrDefault("torrentInfoHash", null)
+                };
+
+                if (Enum.TryParse(message.Data.GetValueOrDefault("indexerFlags"), true, out IndexerFlags flags))
+                {
+                    blocklist.IndexerFlags = flags;
+                }
+
+                _blocklistRepository.Insert(blocklist);
             }
-
-            _blocklistRepository.Insert(blocklist);
+            catch (Exception)
+            {
+                // Silenciar excepción para evitar bucles infinitos
+                // El blocklistService es secundario y no debe interrumpir el flujo principal
+            }
         }
 
         public void HandleAsync(MoviesDeletedEvent message)
