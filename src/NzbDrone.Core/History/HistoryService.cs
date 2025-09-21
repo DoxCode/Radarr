@@ -294,6 +294,15 @@ namespace NzbDrone.Core.History
 
         public void Handle(DownloadFailedEvent message)
         {
+            // Prevenir entradas duplicadas en el historial
+            if (ShouldSkipHistoryEntry(message))
+            {
+                _logger.Debug("HistoryService: Omitiendo entrada de historial duplicada para MovieId: {0}, DownloadId: {1}",
+                              message.MovieId,
+                              message.DownloadId);
+                return;
+            }
+
             var history = new MovieHistory
             {
                 EventType = MovieHistoryEventType.DownloadFailed,
@@ -313,6 +322,42 @@ namespace NzbDrone.Core.History
             history.Data.Add("Indexer", message.TrackedDownload?.RemoteMovie?.Release?.Indexer ?? message.Data.GetValueOrDefault(MovieHistory.INDEXER));
 
             _historyRepository.Insert(history);
+        }
+
+        private bool ShouldSkipHistoryEntry(DownloadFailedEvent message)
+        {
+            if (string.IsNullOrWhiteSpace(message.DownloadId) || message.MovieId <= 0)
+            {
+                return false; // No podemos verificar duplicados sin estos datos
+            }
+
+            try
+            {
+                // Buscar entradas recientes similares (últimos 1 minutos)
+                var recentFailures = _historyRepository.FindByDownloadId(message.DownloadId)
+                    .Where(h => h.EventType == MovieHistoryEventType.DownloadFailed &&
+                               h.MovieId == message.MovieId &&
+                               h.Date > DateTime.UtcNow.AddMinutes(-1))
+                    .ToList();
+
+                // Si ya hay 2 o más entradas recientes, omitir esta
+                var shouldSkip = recentFailures.Count >= 2;
+
+                if (shouldSkip)
+                {
+                    _logger.Debug("HistoryService: Encontradas {0} entradas recientes de fallo para MovieId: {1}, DownloadId: {2}",
+                                  recentFailures.Count,
+                                  message.MovieId,
+                                  message.DownloadId);
+                }
+
+                return shouldSkip;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug(ex, "HistoryService: Error al verificar duplicados para MovieId: {0}", message.MovieId);
+                return false; // En caso de error, permitir la entrada
+            }
         }
 
         public List<MovieHistory> Since(DateTime date, MovieHistoryEventType? eventType)
