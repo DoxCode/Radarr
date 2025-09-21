@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -42,6 +43,10 @@ namespace NzbDrone.Core.History
     {
         private readonly IHistoryRepository _historyRepository;
         private readonly Logger _logger;
+
+        // Cache para prevenir entradas duplicadas muy rápidas
+        private static readonly ConcurrentDictionary<int, DateTime> _recentFailureCache = new ConcurrentDictionary<int, DateTime>();
+        private static readonly TimeSpan _cacheCooldown = TimeSpan.FromSeconds(30);
 
         public HistoryService(IHistoryRepository historyRepository, Logger logger)
         {
@@ -326,29 +331,52 @@ namespace NzbDrone.Core.History
 
         private bool ShouldSkipHistoryEntry(DownloadFailedEvent message)
         {
-            if (string.IsNullOrWhiteSpace(message.DownloadId) || message.MovieId <= 0)
+            if (message.MovieId <= 0)
             {
-                return false; // No podemos verificar duplicados sin estos datos
+                return false; // No podemos verificar duplicados sin MovieId
             }
 
             try
             {
-                // Buscar entradas recientes similares (últimos 1 minutos)
-                var recentFailures = _historyRepository.FindByDownloadId(message.DownloadId)
-                    .Where(h => h.EventType == MovieHistoryEventType.DownloadFailed &&
-                               h.MovieId == message.MovieId &&
-                               h.Date > DateTime.UtcNow.AddMinutes(-1))
+                var now = DateTime.UtcNow;
+
+                // Verificar cache en memoria para prevenir duplicados muy rápidos
+                if (_recentFailureCache.TryGetValue(message.MovieId, out var lastFailureTime))
+                {
+                    if (now - lastFailureTime < _cacheCooldown)
+                    {
+                        _logger.Info("HistoryService: Omitiendo entrada de historial para MovieId: {0}. Última entrada hace {1} segundos",
+                                     message.MovieId,
+                                     (int)(now - lastFailureTime).TotalSeconds);
+                        return true;
+                    }
+                }
+
+                // Actualizar cache con la hora actual
+                _recentFailureCache.AddOrUpdate(message.MovieId, now, (key, oldValue) => now);
+
+                // Limpiar entradas antiguas del cache para evitar memory leak
+                CleanupOldCacheEntries();
+
+                // Buscar entradas recientes de fallo para la misma película (últimos 1 minutos)
+                var recentFailures = _historyRepository.GetByMovieId(message.MovieId, MovieHistoryEventType.DownloadFailed)
+                    .Where(h => h.Date > now.AddMinutes(-1))
                     .ToList();
 
-                // Si ya hay 2 o más entradas recientes, omitir esta
+                // Si ya hay 3 o más entradas recientes para la misma película, omitir esta
                 var shouldSkip = recentFailures.Count >= 2;
 
                 if (shouldSkip)
                 {
-                    _logger.Debug("HistoryService: Encontradas {0} entradas recientes de fallo para MovieId: {1}, DownloadId: {2}",
-                                  recentFailures.Count,
+                    _logger.Info("HistoryService: Omitiendo entrada de historial para MovieId: {0}. Ya hay {1} fallos recientes",
+                                 message.MovieId,
+                                 recentFailures.Count);
+                }
+                else if (recentFailures.Count > 0)
+                {
+                    _logger.Debug("HistoryService: MovieId: {0} tiene {1} fallos recientes, permitiendo esta entrada",
                                   message.MovieId,
-                                  message.DownloadId);
+                                  recentFailures.Count);
                 }
 
                 return shouldSkip;
@@ -357,6 +385,25 @@ namespace NzbDrone.Core.History
             {
                 _logger.Debug(ex, "HistoryService: Error al verificar duplicados para MovieId: {0}", message.MovieId);
                 return false; // En caso de error, permitir la entrada
+            }
+        }
+
+        private void CleanupOldCacheEntries()
+        {
+            var cutoff = DateTime.UtcNow.AddMinutes(-1);
+            var keysToRemove = new List<int>();
+
+            foreach (var kvp in _recentFailureCache)
+            {
+                if (kvp.Value < cutoff)
+                {
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                _recentFailureCache.TryRemove(key, out _);
             }
         }
 
