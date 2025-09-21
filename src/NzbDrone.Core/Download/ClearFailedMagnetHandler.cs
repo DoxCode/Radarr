@@ -60,14 +60,30 @@ namespace NzbDrone.Core.Download
                 }
 
                 var movie = trackedDownload.RemoteMovie.Movie;
-                _logger.Info("ClearFailedMagnetHandler: MOVIE: TrackedDownload o Movie no disponible");
+                _logger.Info("ClearFailedMagnetHandler: MOVIE: Movie encontrado - ID: {0}, Title: {1}", movie?.Id, movie?.Title);
 
-                if (!string.IsNullOrWhiteSpace(movie.ExternalMagnet))
+                if (movie != null && !string.IsNullOrWhiteSpace(movie.ExternalMagnet))
                 {
-                    _logger.Info("ClearFailedMagnetHandler: ExternalMagnet disponible, movie.Title: {0}, movie.ExternalMagnet: {1}", movie.Title, movie.ExternalMagnet);
-                    movie.ExternalMagnet = "";
-                    _logger.Info("ClearFailedMagnetHandler: No hay ExternalMagnet para película '{0}' ExternalMagnet: {1}", movie.Title, movie.ExternalMagnet);
-                    return;
+                    _logger.Info("ClearFailedMagnetHandler: Limpiando ExternalMagnet para película '{0}' (ID: {1}). ExternalMagnet anterior: {2}",
+                                 movie.Title,
+                                 movie.Id,
+                                 movie.ExternalMagnet);
+
+                    // Limpiar el ExternalMagnet para evitar bucle infinito
+                    movie.ExternalMagnet = null;
+
+                    // CRÍTICO: Guardar los cambios en la base de datos
+                    _movieService.UpdateMovie(movie);
+
+                    _logger.Info("ClearFailedMagnetHandler: ExternalMagnet limpiado exitosamente para película '{0}'. Futuras búsquedas usarán indexers.", movie.Title);
+                }
+                else if (movie != null)
+                {
+                    _logger.Info("ClearFailedMagnetHandler: No hay ExternalMagnet para película '{0}' - no se requiere limpieza", movie.Title);
+                }
+                else
+                {
+                    _logger.Info("ClearFailedMagnetHandler: Movie no disponible en TrackedDownload");
                 }
 
                 _logger.Info("__ENDED MOVIE__");
