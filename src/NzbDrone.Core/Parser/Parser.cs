@@ -39,9 +39,6 @@ namespace NzbDrone.Core.Parser
             // Anime [Subgroup] no year, info in parentheses or brackets, hash
             new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)(?<title>(?![(\[]).+)(?:[\[(][^])]).*?(?<hash>\[\w{8}\])(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
-            // Spanish/International format with language after year
-            new Regex(@"^(?<title>(?![(\[]).+?)[-_. ]*(?:\((?<year>(1(8|9)|20)\d{2})\)|(?<year>(1(8|9)|20)\d{2}))[-_. ]*(?:\[(?<format>[^\]]+)\][-_. ]*)?(?<language>SPANISH|JAPANESE)(?:[-_. ]+(?<quality>BluRay|BRRip|DVDRip|WEBRip|HDTV|720p|1080p|2160p|4K))*.*?(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-
             // Some german or french tracker formats (missing year, ...) (Only applies to german and TrueFrench releases) - see ParserFixture for examples and tests - french removed as it broke all movies w/ french titles
             new Regex(@"^(?<title>(?![(\[]).+?)((\W|_))(" + EditionRegex + @".{1,3})?(?:(?<!(19|20)\d{2}.*?)(?<!(?:Good|The)[_ .-])(German|TrueFrench))(.+?)(?=((19|20)\d{2}|$))(?<year>(19|20)\d{2}(?!p|i|\d+|\]|\W\d+))?(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
@@ -66,6 +63,9 @@ namespace NzbDrone.Core.Parser
 
             // As a last resort for movies that have ( or [ in their title.
             new Regex(@"^(?<title>.+?)?(?:(?:[-_\W](?<![)\[!]))*(?<year>(1(8|9)|20)\d{2}(?!p|i|\d+|\]|\W\d+)))+(\W+|_|$)(?!\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
+            // Spanish/International format with language after year
+            new Regex(@"^(?<title>(?![(\[]).+?)[-_. ]*(?:\((?<year>(1(8|9)|20)\d{2})\)|(?<year>(1(8|9)|20)\d{2}))[-_. ]*(?:\[(?<format>[^\]]+)\][-_. ]*)?(?<language>SPANISH|JAPANESE)(?:[-_. ]+(?<quality>BluRay|BRRip|DVDRip|WEBRip|HDTV|720p|1080p|2160p|4K))*.*?(?:$|\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         };
 
         private static readonly Regex[] ReportMovieTitleFolderRegex = new[]
